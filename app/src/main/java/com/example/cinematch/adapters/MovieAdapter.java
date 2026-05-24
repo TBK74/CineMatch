@@ -23,10 +23,19 @@ public class MovieAdapter extends RecyclerView.Adapter<MovieAdapter.MovieViewHol
 
     private final Context context;
     private final List<Movie> movieList;
+    private final boolean isGrid;
 
     public MovieAdapter(Context context, List<Movie> movieList) {
+        this(context, movieList, false);
+    }
+
+    // isGrid = true -> dùng item_movie_grid.xml (match_parent + tỉ lệ khung hình, tránh đè lên
+    // nhau khi hiển thị trong GridLayoutManager, vd màn Search). isGrid = false -> item_movie.xml
+    // (width cố định 120dp, dùng cho các hàng cuộn ngang như Home/Profile/Similar).
+    public MovieAdapter(Context context, List<Movie> movieList, boolean isGrid) {
         this.context = context;
         this.movieList = movieList;
+        this.isGrid = isGrid;
     }
 
     public void updateData(List<Movie> newList) {
@@ -38,7 +47,8 @@ public class MovieAdapter extends RecyclerView.Adapter<MovieAdapter.MovieViewHol
     @NonNull
     @Override
     public MovieViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View view = LayoutInflater.from(context).inflate(R.layout.item_movie, parent, false);
+        int layoutRes = isGrid ? R.layout.item_movie_grid : R.layout.item_movie;
+        View view = LayoutInflater.from(context).inflate(layoutRes, parent, false);
         return new MovieViewHolder(view);
     }
 

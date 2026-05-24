@@ -3,13 +3,13 @@ package com.example.cinematch.ui.detail;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.webkit.WebSettings;
-import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.RatingBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.webkit.WebView;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -31,6 +31,7 @@ import com.example.cinematch.models.Video;
 import com.example.cinematch.models.WatchlistItem;
 import com.example.cinematch.network.ApiClient;
 import com.example.cinematch.network.response.CreditsResponse;
+import com.example.cinematch.network.response.MovieResponse;
 import com.example.cinematch.network.response.VideoListResponse;
 import com.example.cinematch.utils.Constants;
 import com.example.cinematch.utils.SharedPrefManager;
@@ -49,9 +50,10 @@ public class MovieDetailActivity extends AppCompatActivity {
 
     private ImageView imgBackdrop;
     private TextView tvTitle, tvMeta, tvOverview;
-    private Button btnWatchlist, btnSubmitReview;
+    private Button btnWatchlist, btnSubmitReview, btnSaveRating;
     private WebView webViewTrailer;
-    private RecyclerView rvCast, rvReviews;
+    private RecyclerView rvCast, rvReviews, rvSimilar;
+    private com.example.cinematch.adapters.MovieAdapter similarAdapter;
     private EditText edtReviewContent;
     private RatingBar ratingBar;
 
@@ -88,10 +90,13 @@ public class MovieDetailActivity extends AppCompatActivity {
         loadCredits();
         loadVideos();
         loadReviews();
+        loadSimilarMovies();
         checkWatchlistStatus();
+        loadExistingRating();
 
         btnWatchlist.setOnClickListener(v -> toggleWatchlist());
         btnSubmitReview.setOnClickListener(v -> submitReview());
+        btnSaveRating.setOnClickListener(v -> saveRating());
     }
 
     private void bindViews() {
@@ -102,13 +107,26 @@ public class MovieDetailActivity extends AppCompatActivity {
         btnWatchlist = findViewById(R.id.btnWatchlist);
         webViewTrailer = findViewById(R.id.webViewTrailer);
         rvCast = findViewById(R.id.rvCast);
+        rvSimilar = findViewById(R.id.rvSimilar);
         rvReviews = findViewById(R.id.rvReviews);
         edtReviewContent = findViewById(R.id.edtReviewContent);
         btnSubmitReview = findViewById(R.id.btnSubmitReview);
+        btnSaveRating = findViewById(R.id.btnSaveRating);
         ratingBar = findViewById(R.id.ratingBar);
 
         WebSettings settings = webViewTrailer.getSettings();
         settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true); // YouTube iframe API cần DOM storage để chạy JS nội bộ
+        settings.setMediaPlaybackRequiresUserGesture(false); // cho phép tự phát khi nhấn play trong iframe
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+
+        // Nếu không set WebViewClient, mọi link (kể cả nút "Watch on YouTube" khi lỗi) sẽ
+        // bị đẩy ra ngoài trình duyệt/app YouTube thay vì xử lý trong WebView -> đây là lý do
+        // trước đây luôn bị "chuyển hướng sang YouTube". Giữ điều hướng trong WebView.
+        webViewTrailer.setWebViewClient(new android.webkit.WebViewClient());
+        // WebChromeClient cần thiết để iframe YouTube hỗ trợ toàn màn hình / phát video đúng cách
+        webViewTrailer.setWebChromeClient(new android.webkit.WebChromeClient());
     }
 
     private void setupRecyclerViews() {
@@ -119,6 +137,10 @@ public class MovieDetailActivity extends AppCompatActivity {
         rvReviews.setLayoutManager(new LinearLayoutManager(this));
         reviewAdapter = new ReviewAdapter(this, new ArrayList<>(), this::showReportDialog);
         rvReviews.setAdapter(reviewAdapter);
+
+        rvSimilar.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
+        similarAdapter = new com.example.cinematch.adapters.MovieAdapter(this, new ArrayList<>());
+        rvSimilar.setAdapter(similarAdapter);
     }
 
     // ================= Load chi tiết phim: network trước, SQLite cache khi mất mạng =================
@@ -181,24 +203,81 @@ public class MovieDetailActivity extends AppCompatActivity {
                 });
     }
 
-    // Lấy key trailer từ TMDB /videos, nhúng bằng WebView -> KHÔNG dùng YouTube Data API
+    // Lấy key trailer từ TMDB /videos, nhúng bằng WebView -> KHÔNG dùng YouTube Data API.
+    // Nhiều phim không có bản trailer tiếng Việt trên TMDB nên thử vi-VN trước,
+    // nếu rỗng thì fallback sang en-US để không bị trống trắng như trước.
     private void loadVideos() {
-        ApiClient.getTmdbApi().getMovieVideos(movieId, Constants.TMDB_API_KEY, Constants.TMDB_LANGUAGE)
+        fetchVideos(Constants.TMDB_LANGUAGE, true);
+    }
+
+    private void fetchVideos(String language, boolean allowFallback) {
+        ApiClient.getTmdbApi().getMovieVideos(movieId, Constants.TMDB_API_KEY, language)
                 .enqueue(new Callback<VideoListResponse>() {
                     @Override
                     public void onResponse(Call<VideoListResponse> call, Response<VideoListResponse> response) {
-                        if (response.isSuccessful() && response.body() != null && response.body().getResults() != null) {
-                            for (Video video : response.body().getResults()) {
-                                if (video.isYoutubeTrailer()) {
-                                    webViewTrailer.loadUrl(video.getEmbedUrl());
-                                    break;
-                                }
-                            }
+                        List<Video> results = (response.isSuccessful() && response.body() != null)
+                                ? response.body().getResults() : null;
+
+                        Video chosen = pickBestTrailer(results);
+                        if (chosen != null) {
+                            webViewTrailer.setVisibility(android.view.View.VISIBLE);
+                            loadTrailerHtml(chosen.getKey());
+                        } else if (allowFallback) {
+                            fetchVideos("en-US", false); // thử lại bằng tiếng Anh
+                        } else {
+                            webViewTrailer.setVisibility(android.view.View.GONE); // không có trailer nào cả
                         }
                     }
 
                     @Override
-                    public void onFailure(Call<VideoListResponse> call, Throwable t) { }
+                    public void onFailure(Call<VideoListResponse> call, Throwable t) {
+                        if (allowFallback) {
+                            fetchVideos("en-US", false);
+                        } else {
+                            webViewTrailer.setVisibility(android.view.View.GONE);
+                        }
+                    }
+                });
+    }
+
+    // Load trực tiếp URL embed hay bị lỗi 135 (referrer/X-Frame-Options bị chặn khi WebView
+    // không có "trang chủ" hợp lệ). Bọc trong 1 trang HTML tối giản rồi nạp bằng
+    // loadDataWithBaseURL với base URL là youtube.com giúp video phát được ổn định trong app,
+    // không còn phải mở sang ứng dụng/trình duyệt YouTube ngoài.
+    private void loadTrailerHtml(String youtubeKey) {
+        String html = "<html><body style='margin:0;padding:0;background:#000;'>"
+                + "<iframe width='100%' height='100%' "
+                + "src='https://www.youtube.com/embed/" + youtubeKey
+                + "?playsinline=1&rel=0&modestbranding=1' "
+                + "frameborder='0' allow='autoplay; encrypted-media' allowfullscreen></iframe>"
+                + "</body></html>";
+        webViewTrailer.loadDataWithBaseURL(
+                "https://www.youtube.com", html, "text/html", "utf-8", null);
+    }
+
+    // Ưu tiên Trailer chính thức, không có thì lấy Teaser, cuối cùng lấy video YouTube bất kỳ
+    private Video pickBestTrailer(List<Video> results) {
+        if (results == null || results.isEmpty()) return null;
+
+        for (Video v : results) if (v.isYoutubeTrailer()) return v;
+        for (Video v : results) if (v.isYoutubeVideo() && "Teaser".equalsIgnoreCase(v.getType())) return v;
+        for (Video v : results) if (v.isYoutubeVideo()) return v;
+        return null;
+    }
+
+    // Phim tương tự -> gợi ý thêm phim cùng gu ngay tại trang chi tiết (giống Related Films của Letterboxd)
+    private void loadSimilarMovies() {
+        ApiClient.getTmdbApi().getSimilarMovies(movieId, Constants.TMDB_API_KEY, Constants.TMDB_LANGUAGE, 1)
+                .enqueue(new Callback<MovieResponse>() {
+                    @Override
+                    public void onResponse(Call<MovieResponse> call, Response<MovieResponse> response) {
+                        if (response.isSuccessful() && response.body() != null) {
+                            similarAdapter.updateData(response.body().getResults());
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<MovieResponse> call, Throwable t) { }
                 });
     }
 
@@ -262,7 +341,7 @@ public class MovieDetailActivity extends AppCompatActivity {
         }
     }
 
-    // Gửi review + đồng thời lưu rating (nếu user có kéo thanh sao) để RecommendationEngine dùng sau này
+    // Gửi review dạng text -> KHÔNG còn phụ thuộc vào rating nữa (2 thao tác độc lập)
     private void submitReview() {
         String uid = prefManager.getUid();
         String content = edtReviewContent.getText().toString().trim();
@@ -275,7 +354,6 @@ public class MovieDetailActivity extends AppCompatActivity {
             Toast.makeText(this, "Vui lòng nhập nội dung đánh giá", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (currentMovie == null) return;
 
         firestoreManager.getUserProfile(uid, new FirestoreManager.UserCallback() {
             @Override
@@ -294,21 +372,64 @@ public class MovieDetailActivity extends AppCompatActivity {
                         Toast.makeText(MovieDetailActivity.this, message, Toast.LENGTH_SHORT).show();
                     }
                 });
+            }
 
-                // Thang 5 sao * 2 = thang điểm 10, dùng genreIds từ TMDB detail để RecommendationEngine tính weight
-                float stars = ratingBar.getRating();
-                if (stars > 0 && currentMovie.getGenres() != null) {
-                    List<Integer> genreIds = new ArrayList<>();
-                    for (com.example.cinematch.models.Genre g : currentMovie.getGenres()) genreIds.add(g.getId());
+            @Override
+            public void onError(String message) { }
+        });
+    }
 
-                    Rating rating = new Rating(uid, movieId, genreIds, stars * 2);
-                    firestoreManager.addOrUpdateRating(rating, new FirestoreManager.SimpleCallback() {
-                        @Override
-                        public void onSuccess() { }
-                        @Override
-                        public void onError(String message) { }
-                    });
-                }
+    // Lưu điểm rating -> LUÔN bấm được ngay cả khi không viết review, vì đây là 2 thao tác tách biệt.
+    // Đây là chỗ user hay bị "không đánh giá được" trước đây do rating bị gộp chung với review text.
+    private void saveRating() {
+        String uid = prefManager.getUid();
+        float stars = ratingBar.getRating();
+
+        if (uid == null) {
+            Toast.makeText(this, "Vui lòng đăng nhập để đánh giá", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (stars <= 0) {
+            Toast.makeText(this, "Vui lòng chọn số sao trước khi lưu", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (currentMovie == null) {
+            Toast.makeText(this, "Đang tải dữ liệu phim, thử lại sau giây lát", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        List<Integer> genreIds = new ArrayList<>();
+        if (currentMovie.getGenres() != null) {
+            for (com.example.cinematch.models.Genre g : currentMovie.getGenres()) genreIds.add(g.getId());
+        }
+
+        // Thang 5 sao * 2 = thang điểm 10, dùng genreIds từ TMDB detail để RecommendationEngine tính weight
+        Rating rating = new Rating(uid, movieId, currentMovie.getTitle(),
+                currentMovie.getPosterPath(), genreIds, stars * 2);
+
+        firestoreManager.addOrUpdateRating(rating, new FirestoreManager.SimpleCallback() {
+            @Override
+            public void onSuccess() {
+                Toast.makeText(MovieDetailActivity.this,
+                        "Đã lưu đánh giá " + stars + " sao", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onError(String message) {
+                Toast.makeText(MovieDetailActivity.this, message, Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    // Nếu user đã rate phim này trước đó, tự hiện lại số sao khi mở lại trang chi tiết
+    private void loadExistingRating() {
+        String uid = prefManager.getUid();
+        if (uid == null) return;
+
+        firestoreManager.getRating(uid, movieId, new FirestoreManager.RatingCallback() {
+            @Override
+            public void onSuccess(Rating rating) {
+                if (rating != null) ratingBar.setRating((float) (rating.getScore() / 2.0));
             }
 
             @Override
