@@ -54,7 +54,7 @@ public class SearchFragment extends Fragment {
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
-                              @Nullable Bundle savedInstanceState) {
+                             @Nullable Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_search, container, false);
     }
 
@@ -68,7 +68,7 @@ public class SearchFragment extends Fragment {
         ImageButton btnFilter = view.findViewById(R.id.btnFilter);
 
         rvResults.setLayoutManager(new GridLayoutManager(requireContext(), 3));
-        adapter = new MovieAdapter(requireContext(), new ArrayList<>());
+        adapter = new MovieAdapter(requireContext(), new ArrayList<>(), true);
         rvResults.setAdapter(adapter);
 
         // Tìm kiếm realtime: debounce 500ms để tránh gọi API liên tục mỗi lần gõ phím
