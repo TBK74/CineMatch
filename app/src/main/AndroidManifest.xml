@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:name=".CineMatchApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.CineMatch"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".ui.splash.SplashActivity"
+            android:exported="true"
+            android:theme="@style/Theme.CineMatch.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name=".ui.auth.LoginActivity" android:exported="false" />
+        <activity android:name=".ui.auth.RegisterActivity" android:exported="false" />
+        <activity android:name=".ui.main.MainActivity" android:exported="false" />
+
+        <!-- Explicit intent từ MovieAdapter/WatchlistAdapter -> nhận EXTRA_MOVIE_ID -->
+        <activity android:name=".ui.detail.MovieDetailActivity" android:exported="false" />
+
+        <!-- Chỉ mở khi role = moderator, kiểm tra ở MainActivity trước khi startActivity -->
+        <activity android:name=".ui.moderator.ModeratorDashboardActivity" android:exported="false" />
+
+    </application>
+</manifest>
