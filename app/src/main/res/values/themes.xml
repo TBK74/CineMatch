@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.CineMatch" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/cinematch_primary</item>
+        <item name="colorSecondary">@color/cinematch_accent</item>
+        <item name="android:windowBackground">@color/cinematch_bg</item>
+    </style>
+
+    <style name="Theme.CineMatch.Splash" parent="Theme.CineMatch">
+        <item name="android:windowBackground">@color/cinematch_primary</item>
+    </style>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="cinematch_primary">#0D1B2A</color>
+    <color name="cinematch_accent">#E63946</color>
+    <color name="cinematch_bg">#0D1B2A</color>
+    <color name="cinematch_surface">#1B263B</color>
+    <color name="white">#FFFFFF</color>
+    <color name="gray_text">#A9A9A9</color>
+    <color name="star_gold">#FFC107</color>
+</resources>
