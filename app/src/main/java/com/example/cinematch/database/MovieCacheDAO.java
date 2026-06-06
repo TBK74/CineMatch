@@ -8,6 +8,7 @@ import android.database.sqlite.SQLiteDatabase;
 import com.example.cinematch.models.Movie;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
