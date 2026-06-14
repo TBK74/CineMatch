@@ -50,7 +50,7 @@ public class MovieDetailActivity extends AppCompatActivity {
 
     private ImageView imgBackdrop;
     private TextView tvTitle, tvMeta, tvOverview;
-    private Button btnWatchlist, btnSubmitReview;
+    private Button btnWatchlist, btnSubmitReview, btnSaveRating;
     private WebView webViewTrailer;
     private RecyclerView rvCast, rvReviews, rvSimilar;
     private com.example.cinematch.adapters.MovieAdapter similarAdapter;
@@ -92,9 +92,11 @@ public class MovieDetailActivity extends AppCompatActivity {
         loadReviews();
         loadSimilarMovies();
         checkWatchlistStatus();
+        loadExistingRating();
 
         btnWatchlist.setOnClickListener(v -> toggleWatchlist());
         btnSubmitReview.setOnClickListener(v -> submitReview());
+        btnSaveRating.setOnClickListener(v -> saveRating());
     }
 
     private void bindViews() {
@@ -109,10 +111,22 @@ public class MovieDetailActivity extends AppCompatActivity {
         rvReviews = findViewById(R.id.rvReviews);
         edtReviewContent = findViewById(R.id.edtReviewContent);
         btnSubmitReview = findViewById(R.id.btnSubmitReview);
+        btnSaveRating = findViewById(R.id.btnSaveRating);
         ratingBar = findViewById(R.id.ratingBar);
 
         WebSettings settings = webViewTrailer.getSettings();
         settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true); // YouTube iframe API cần DOM storage để chạy JS nội bộ
+        settings.setMediaPlaybackRequiresUserGesture(false); // cho phép tự phát khi nhấn play trong iframe
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+
+        // Nếu không set WebViewClient, mọi link (kể cả nút "Watch on YouTube" khi lỗi) sẽ
+        // bị đẩy ra ngoài trình duyệt/app YouTube thay vì xử lý trong WebView -> đây là lý do
+        // trước đây luôn bị "chuyển hướng sang YouTube". Giữ điều hướng trong WebView.
+        webViewTrailer.setWebViewClient(new android.webkit.WebViewClient());
+        // WebChromeClient cần thiết để iframe YouTube hỗ trợ toàn màn hình / phát video đúng cách
+        webViewTrailer.setWebChromeClient(new android.webkit.WebChromeClient());
     }
 
     private void setupRecyclerViews() {
@@ -207,7 +221,7 @@ public class MovieDetailActivity extends AppCompatActivity {
                         Video chosen = pickBestTrailer(results);
                         if (chosen != null) {
                             webViewTrailer.setVisibility(android.view.View.VISIBLE);
-                            webViewTrailer.loadUrl(chosen.getEmbedUrl());
+                            loadTrailerHtml(chosen.getKey());
                         } else if (allowFallback) {
                             fetchVideos("en-US", false); // thử lại bằng tiếng Anh
                         } else {
@@ -224,6 +238,21 @@ public class MovieDetailActivity extends AppCompatActivity {
                         }
                     }
                 });
+    }
+
+    // Load trực tiếp URL embed hay bị lỗi 135 (referrer/X-Frame-Options bị chặn khi WebView
+    // không có "trang chủ" hợp lệ). Bọc trong 1 trang HTML tối giản rồi nạp bằng
+    // loadDataWithBaseURL với base URL là youtube.com giúp video phát được ổn định trong app,
+    // không còn phải mở sang ứng dụng/trình duyệt YouTube ngoài.
+    private void loadTrailerHtml(String youtubeKey) {
+        String html = "<html><body style='margin:0;padding:0;background:#000;'>"
+                + "<iframe width='100%' height='100%' "
+                + "src='https://www.youtube.com/embed/" + youtubeKey
+                + "?playsinline=1&rel=0&modestbranding=1' "
+                + "frameborder='0' allow='autoplay; encrypted-media' allowfullscreen></iframe>"
+                + "</body></html>";
+        webViewTrailer.loadDataWithBaseURL(
+                "https://www.youtube.com", html, "text/html", "utf-8", null);
     }
 
     // Ưu tiên Trailer chính thức, không có thì lấy Teaser, cuối cùng lấy video YouTube bất kỳ
@@ -312,7 +341,7 @@ public class MovieDetailActivity extends AppCompatActivity {
         }
     }
 
-    // Gửi review + đồng thời lưu rating (nếu user có kéo thanh sao) để RecommendationEngine dùng sau này
+    // Gửi review dạng text -> KHÔNG còn phụ thuộc vào rating nữa (2 thao tác độc lập)
     private void submitReview() {
         String uid = prefManager.getUid();
         String content = edtReviewContent.getText().toString().trim();
@@ -325,7 +354,6 @@ public class MovieDetailActivity extends AppCompatActivity {
             Toast.makeText(this, "Vui lòng nhập nội dung đánh giá", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (currentMovie == null) return;
 
         firestoreManager.getUserProfile(uid, new FirestoreManager.UserCallback() {
             @Override
@@ -344,22 +372,64 @@ public class MovieDetailActivity extends AppCompatActivity {
                         Toast.makeText(MovieDetailActivity.this, message, Toast.LENGTH_SHORT).show();
                     }
                 });
+            }
 
-                // Thang 5 sao * 2 = thang điểm 10, dùng genreIds từ TMDB detail để RecommendationEngine tính weight
-                float stars = ratingBar.getRating();
-                if (stars > 0 && currentMovie.getGenres() != null) {
-                    List<Integer> genreIds = new ArrayList<>();
-                    for (com.example.cinematch.models.Genre g : currentMovie.getGenres()) genreIds.add(g.getId());
+            @Override
+            public void onError(String message) { }
+        });
+    }
 
-                    Rating rating = new Rating(uid, movieId, currentMovie.getTitle(),
-                            currentMovie.getPosterPath(), genreIds, stars * 2);
-                    firestoreManager.addOrUpdateRating(rating, new FirestoreManager.SimpleCallback() {
-                        @Override
-                        public void onSuccess() { }
-                        @Override
-                        public void onError(String message) { }
-                    });
-                }
+    // Lưu điểm rating -> LUÔN bấm được ngay cả khi không viết review, vì đây là 2 thao tác tách biệt.
+    // Đây là chỗ user hay bị "không đánh giá được" trước đây do rating bị gộp chung với review text.
+    private void saveRating() {
+        String uid = prefManager.getUid();
+        float stars = ratingBar.getRating();
+
+        if (uid == null) {
+            Toast.makeText(this, "Vui lòng đăng nhập để đánh giá", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (stars <= 0) {
+            Toast.makeText(this, "Vui lòng chọn số sao trước khi lưu", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (currentMovie == null) {
+            Toast.makeText(this, "Đang tải dữ liệu phim, thử lại sau giây lát", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        List<Integer> genreIds = new ArrayList<>();
+        if (currentMovie.getGenres() != null) {
+            for (com.example.cinematch.models.Genre g : currentMovie.getGenres()) genreIds.add(g.getId());
+        }
+
+        // Thang 5 sao * 2 = thang điểm 10, dùng genreIds từ TMDB detail để RecommendationEngine tính weight
+        Rating rating = new Rating(uid, movieId, currentMovie.getTitle(),
+                currentMovie.getPosterPath(), genreIds, stars * 2);
+
+        firestoreManager.addOrUpdateRating(rating, new FirestoreManager.SimpleCallback() {
+            @Override
+            public void onSuccess() {
+                Toast.makeText(MovieDetailActivity.this,
+                        "Đã lưu đánh giá " + stars + " sao", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onError(String message) {
+                Toast.makeText(MovieDetailActivity.this, message, Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    // Nếu user đã rate phim này trước đó, tự hiện lại số sao khi mở lại trang chi tiết
+    private void loadExistingRating() {
+        String uid = prefManager.getUid();
+        if (uid == null) return;
+
+        firestoreManager.getRating(uid, movieId, new FirestoreManager.RatingCallback() {
+            @Override
+            public void onSuccess(Rating rating) {
+                if (rating != null) ratingBar.setRating((float) (rating.getScore() / 2.0));
             }
 
             @Override
