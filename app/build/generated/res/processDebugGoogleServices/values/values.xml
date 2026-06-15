@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="gcm_defaultSenderId" translatable="false">1067131249894</string>
+    <string name="google_api_key" translatable="false">AIzaSyAS5-XHI5EbwJ_MLapei5N34_PIeK-ahHc</string>
+    <string name="google_app_id" translatable="false">1:1067131249894:android:ee51653231f0254cccc727</string>
+    <string name="google_crash_reporting_api_key" translatable="false">AIzaSyAS5-XHI5EbwJ_MLapei5N34_PIeK-ahHc</string>
+    <string name="google_storage_bucket" translatable="false">cinematch-df712.firebasestorage.app</string>
+    <string name="project_id" translatable="false">cinematch-df712</string>
+</resources>
