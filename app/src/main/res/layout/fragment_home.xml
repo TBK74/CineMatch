@@ -62,6 +62,13 @@
                 android:paddingStart="12dp"
                 android:clipToPadding="false" />
 
+            <!-- Các hàng theo thể loại (Hành động, Hài, Kinh dị...) được chèn động ở HomeFragment -->
+            <LinearLayout
+                android:id="@+id/genreContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
         </LinearLayout>
     </ScrollView>
 </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
