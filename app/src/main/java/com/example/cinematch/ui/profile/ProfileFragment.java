@@ -43,8 +43,9 @@ import retrofit2.Response;
 
 public class ProfileFragment extends Fragment {
 
-    private TextView tvAvatar, tvDisplayName, tvEmail, tvRatedCount, tvWatchlistCount, tvAvgScore, tvFavoriteGenre, tvNoRatings;
-    private Button btnModeratorDashboard, btnLogout;
+    private TextView tvDisplayName, tvEmail, tvExtraInfo, tvRatedCount, tvWatchlistCount, tvAvgScore, tvFavoriteGenre, tvNoRatings;
+    private android.widget.ImageView imgAvatar;
+    private Button btnModeratorDashboard, btnLogout, btnEditProfile;
     private RecyclerView rvRatedMovies;
     private MovieAdapter ratedAdapter;
 
@@ -55,7 +56,7 @@ public class ProfileFragment extends Fragment {
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
-                              @Nullable Bundle savedInstanceState) {
+                             @Nullable Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_profile, container, false);
     }
 
@@ -67,9 +68,10 @@ public class ProfileFragment extends Fragment {
         authManager = new AuthManager(requireContext());
         prefManager = new SharedPrefManager(requireContext());
 
-        tvAvatar = view.findViewById(R.id.tvAvatar);
+        imgAvatar = view.findViewById(R.id.imgAvatar);
         tvDisplayName = view.findViewById(R.id.tvDisplayName);
         tvEmail = view.findViewById(R.id.tvEmail);
+        tvExtraInfo = view.findViewById(R.id.tvExtraInfo);
         tvRatedCount = view.findViewById(R.id.tvRatedCount);
         tvWatchlistCount = view.findViewById(R.id.tvWatchlistCount);
         tvAvgScore = view.findViewById(R.id.tvAvgScore);
@@ -78,6 +80,10 @@ public class ProfileFragment extends Fragment {
         rvRatedMovies = view.findViewById(R.id.rvRatedMovies);
         btnModeratorDashboard = view.findViewById(R.id.btnModeratorDashboard);
         btnLogout = view.findViewById(R.id.btnLogout);
+        btnEditProfile = view.findViewById(R.id.btnEditProfile);
+
+        btnEditProfile.setOnClickListener(v ->
+                startActivity(new Intent(requireContext(), EditProfileActivity.class)));
 
         rvRatedMovies.setLayoutManager(new LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false));
         ratedAdapter = new MovieAdapter(requireContext(), new ArrayList<>());
@@ -111,8 +117,19 @@ public class ProfileFragment extends Fragment {
                 if (!isAdded()) return;
                 tvDisplayName.setText(user.getDisplayName());
                 tvEmail.setText(user.getEmail());
-                tvAvatar.setText(user.getDisplayName() != null && !user.getDisplayName().isEmpty()
-                        ? user.getDisplayName().substring(0, 1).toUpperCase(Locale.getDefault()) : "?");
+
+                StringBuilder extra = new StringBuilder();
+                if (user.getGender() != null) extra.append(user.getGender());
+                if (user.getAge() > 0) extra.append(extra.length() > 0 ? " • " : "").append(user.getAge()).append(" tuổi");
+                if (user.getPhone() != null && !user.getPhone().isEmpty())
+                    extra.append(extra.length() > 0 ? " • " : "").append(user.getPhone());
+                tvExtraInfo.setText(extra.toString());
+
+                if (user.getAvatarUrl() != null) {
+                    com.bumptech.glide.Glide.with(requireContext()).load(user.getAvatarUrl())
+                            .circleCrop().placeholder(R.drawable.bg_avatar_circle).into(imgAvatar);
+                }
+
                 btnModeratorDashboard.setVisibility(user.isModerator() ? View.VISIBLE : View.GONE);
             }
 

@@ -17,15 +17,12 @@
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <TextView
-                android:id="@+id/tvAvatar"
+            <ImageView
+                android:id="@+id/imgAvatar"
                 android:layout_width="64dp"
                 android:layout_height="64dp"
                 android:background="@drawable/bg_avatar_circle"
-                android:gravity="center"
-                android:textColor="@color/white"
-                android:textSize="26sp"
-                android:textStyle="bold" />
+                android:scaleType="centerCrop" />
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -49,8 +46,23 @@
                     android:layout_marginTop="2dp"
                     android:textColor="@color/gray_text"
                     android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/tvExtraInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/gray_text"
+                    android:textSize="12sp" />
             </LinearLayout>
         </LinearLayout>
+
+        <Button
+            android:id="@+id/btnEditProfile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Chỉnh sửa hồ sơ" />
 
         <!-- 3 thẻ thống kê: Đã đánh giá / Watchlist / Điểm TB (giống dải stats của Letterboxd) -->
         <LinearLayout
