@@ -34,6 +34,11 @@ public class Video {
         return "YouTube".equalsIgnoreCase(site) && "Trailer".equalsIgnoreCase(type);
     }
 
+    // Fallback: chấp nhận Teaser/Clip nếu phim không có video loại Trailer chính thức
+    public boolean isYoutubeVideo() {
+        return "YouTube".equalsIgnoreCase(site);
+    }
+
     // URL để nhúng vào WebView ở màn Movie Detail
     public String getEmbedUrl() {
         return "https://www.youtube.com/embed/" + key;

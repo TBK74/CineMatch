@@ -55,6 +55,15 @@ public interface TmdbApiService {
             @Query("page") int page
     );
 
+    // Phim tương tự -> hàng "Phim tương tự" ở Movie Detail
+    @GET("movie/{movie_id}/similar")
+    Call<MovieResponse> getSimilarMovies(
+            @Path("movie_id") int movieId,
+            @Query("api_key") String apiKey,
+            @Query("language") String language,
+            @Query("page") int page
+    );
+
     // Danh sách thể loại -> dùng để hiển thị filter & map genre_id -> tên
     @GET("genre/movie/list")
     Call<GenreListResponse> getGenreList(

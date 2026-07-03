@@ -8,7 +8,6 @@ import com.example.cinematch.models.WatchlistItem;
 import com.example.cinematch.utils.Constants;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 
 import java.util.ArrayList;
@@ -34,6 +33,10 @@ public class FirestoreManager {
     public interface BooleanCallback {
         void onResult(boolean result);
     }
+    public interface RatingCallback {
+        void onSuccess(Rating rating); // trả về null nếu chưa từng rate
+        void onError(String message);
+    }
 
     private final FirebaseFirestore db;
 
@@ -44,6 +47,15 @@ public class FirestoreManager {
     // ================= USERS =================
 
     public void createUserDocument(User user, SimpleCallback callback) {
+        db.collection(Constants.COLLECTION_USERS).document(user.getUid())
+                .set(user)
+                .addOnSuccessListener(unused -> callback.onSuccess())
+                .addOnFailureListener(e -> callback.onError(e.getMessage()));
+    }
+
+    // Cập nhật hồ sơ (tên, giới tính, tuổi, sđt, avatar) từ màn EditProfileActivity.
+    // Dùng .set() ghi đè toàn bộ document vì luôn truyền vào 1 User đã có đủ field cũ + mới.
+    public void updateUserProfile(User user, SimpleCallback callback) {
         db.collection(Constants.COLLECTION_USERS).document(user.getUid())
                 .set(user)
                 .addOnSuccessListener(unused -> callback.onSuccess())
@@ -89,6 +101,16 @@ public class FirestoreManager {
                 .addOnFailureListener(e -> callback.onError(e.getMessage()));
     }
 
+    // Lấy rating hiện có của user cho 1 phim cụ thể -> để pre-fill RatingBar khi mở lại Movie Detail
+    public void getRating(String userId, int movieId, RatingCallback callback) {
+        String docId = userId + "_" + movieId;
+        db.collection(Constants.COLLECTION_RATINGS).document(docId).get()
+                .addOnSuccessListener(doc -> {
+                    callback.onSuccess(doc.exists() ? doc.toObject(Rating.class) : null);
+                })
+                .addOnFailureListener(e -> callback.onError(e.getMessage()));
+    }
+
     // ================= REVIEWS =================
 
     public void addReview(Review review, SimpleCallback callback) {
@@ -98,14 +120,19 @@ public class FirestoreManager {
                 .addOnFailureListener(e -> callback.onError(e.getMessage()));
     }
 
-    // Chỉ lấy review đang "visible" -> review bị ẩn do moderator sẽ không hiện với user thường
+    // Chỉ lấy review đang "visible" -> review bị ẩn do moderator sẽ không hiện với user thường.
+    // Lưu ý: KHÔNG dùng .orderBy() kèm 2 whereEqualTo() vì Firestore bắt buộc phải tạo
+    // composite index thủ công cho tổ hợp đó -> sort lại ở client để tránh phải cấu hình index.
     public void getReviewsForMovie(int movieId, ListCallback<Review> callback) {
         db.collection(Constants.COLLECTION_REVIEWS)
                 .whereEqualTo("movieId", movieId)
                 .whereEqualTo("status", Review.STATUS_VISIBLE)
-                .orderBy("createdAt", Query.Direction.DESCENDING)
                 .get()
-                .addOnSuccessListener(query -> callback.onSuccess(mapReviews(query)))
+                .addOnSuccessListener(query -> {
+                    List<Review> reviews = mapReviews(query);
+                    reviews.sort((a, b) -> Long.compare(b.getCreatedAt(), a.getCreatedAt()));
+                    callback.onSuccess(reviews);
+                })
                 .addOnFailureListener(e -> callback.onError(e.getMessage()));
     }
 
@@ -144,16 +171,18 @@ public class FirestoreManager {
                 .addOnFailureListener(e -> callback.onResult(false));
     }
 
+    // Lưu ý: bỏ .orderBy() kèm whereEqualTo() để không bắt buộc phải tạo composite index
+    // trên Firestore Console (đây chính là nguyên nhân lỗi FAILED_PRECONDITION khi mở Watchlist).
     public void getWatchlist(String userId, ListCallback<WatchlistItem> callback) {
         db.collection(Constants.COLLECTION_WATCHLIST)
                 .whereEqualTo("userId", userId)
-                .orderBy("addedAt", Query.Direction.DESCENDING)
                 .get()
                 .addOnSuccessListener(query -> {
                     List<WatchlistItem> items = new ArrayList<>();
                     for (QueryDocumentSnapshot doc : query) {
                         items.add(doc.toObject(WatchlistItem.class));
                     }
+                    items.sort((a, b) -> Long.compare(b.getAddedAt(), a.getAddedAt()));
                     callback.onSuccess(items);
                 })
                 .addOnFailureListener(e -> callback.onError(e.getMessage()));
@@ -174,13 +203,23 @@ public class FirestoreManager {
                 .addOnFailureListener(e -> callback.onError(e.getMessage()));
     }
 
-    // Lấy các review đang bị báo cáo (reportCount > 0) và còn hiển thị -> Moderator Dashboard
+    // Lấy toàn bộ review "visible" rồi lọc reportCount > 0 ở client, tránh phải tạo
+    // composite index cho tổ hợp whereGreaterThan + whereEqualTo trên Firestore Console.
     public void getReportedReviews(ListCallback<Review> callback) {
         db.collection(Constants.COLLECTION_REVIEWS)
-                .whereGreaterThan("reportCount", 0)
                 .whereEqualTo("status", Review.STATUS_VISIBLE)
                 .get()
-                .addOnSuccessListener(query -> callback.onSuccess(mapReviews(query)))
+                .addOnSuccessListener(query -> {
+                    List<Review> reviews = new ArrayList<>();
+                    for (QueryDocumentSnapshot doc : query) {
+                        Review review = doc.toObject(Review.class);
+                        if (review.getReportCount() > 0) {
+                            review.setReviewId(doc.getId());
+                            reviews.add(review);
+                        }
+                    }
+                    callback.onSuccess(reviews);
+                })
                 .addOnFailureListener(e -> callback.onError(e.getMessage()));
     }
 

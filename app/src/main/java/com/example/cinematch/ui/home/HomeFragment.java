@@ -4,6 +4,8 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -32,6 +34,7 @@ import retrofit2.Response;
 public class HomeFragment extends Fragment {
 
     private RecyclerView rvBanner, rvRecommended, rvPopular;
+    private android.widget.LinearLayout genreContainer;
     private SwipeRefreshLayout swipeRefresh;
     private MovieAdapter bannerAdapter, recommendedAdapter, popularAdapter;
     private SharedPrefManager prefManager;
@@ -53,6 +56,7 @@ public class HomeFragment extends Fragment {
         rvRecommended = view.findViewById(R.id.rvRecommended);
         rvPopular = view.findViewById(R.id.rvPopular);
         swipeRefresh = view.findViewById(R.id.swipeRefresh);
+        genreContainer = view.findViewById(R.id.genreContainer);
 
         setupRecyclerView(rvBanner);
         setupRecyclerView(rvRecommended);
@@ -70,6 +74,72 @@ public class HomeFragment extends Fragment {
         loadAllData();
     }
 
+    // Lấy danh sách thể loại từ TMDB, dựng động 4 hàng đầu tiên (Hành động, Hài, Kinh dị...)
+    // ngay dưới hàng "Phổ biến" -> đáp ứng yêu cầu "thêm mục thể loại" ở trang chủ.
+    private void loadGenreRows() {
+        ApiClient.getTmdbApi().getGenreList(Constants.TMDB_API_KEY, Constants.TMDB_LANGUAGE)
+                .enqueue(new Callback<com.example.cinematch.network.response.GenreListResponse>() {
+                    @Override
+                    public void onResponse(Call<com.example.cinematch.network.response.GenreListResponse> call,
+                                            Response<com.example.cinematch.network.response.GenreListResponse> response) {
+                        if (!isAdded() || !response.isSuccessful() || response.body() == null) return;
+
+                        genreContainer.removeAllViews(); // tránh nhân đôi khi kéo refresh nhiều lần
+                        List<com.example.cinematch.models.Genre> genres = response.body().getGenres();
+
+                        int rowCount = Math.min(4, genres.size());
+                        for (int i = 0; i < rowCount; i++) {
+                            addGenreRow(genres.get(i));
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<com.example.cinematch.network.response.GenreListResponse> call, Throwable t) { }
+                });
+    }
+
+    // Tạo 1 hàng gồm tiêu đề thể loại + RecyclerView ngang, gọi /discover/movie theo genre đó
+    private void addGenreRow(com.example.cinematch.models.Genre genre) {
+        TextView title = new TextView(requireContext());
+        title.setText(genre.getName());
+        title.setTextColor(getResources().getColor(R.color.white));
+        title.setTextSize(18);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        int marginPx = (int) (12 * getResources().getDisplayMetrics().density);
+        int marginTopPx = (int) (16 * getResources().getDisplayMetrics().density);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        titleParams.setMargins(marginPx, marginTopPx, 0, 0);
+        title.setLayoutParams(titleParams);
+        genreContainer.addView(title);
+
+        RecyclerView rv = new RecyclerView(requireContext());
+        LinearLayout.LayoutParams rvParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, (int) (220 * getResources().getDisplayMetrics().density));
+        rv.setLayoutParams(rvParams);
+        rv.setPadding(marginPx, 0, 0, 0);
+        rv.setClipToPadding(false);
+        setupRecyclerView(rv);
+        genreContainer.addView(rv);
+
+        MovieAdapter adapter = new MovieAdapter(requireContext(), new ArrayList<>());
+        rv.setAdapter(adapter);
+
+        ApiClient.getTmdbApi().discoverMovies(Constants.TMDB_API_KEY, Constants.TMDB_LANGUAGE,
+                        String.valueOf(genre.getId()), null, "popularity.desc", 20, 1)
+                .enqueue(new Callback<MovieResponse>() {
+                    @Override
+                    public void onResponse(Call<MovieResponse> call, Response<MovieResponse> response) {
+                        if (isAdded() && response.isSuccessful() && response.body() != null) {
+                            adapter.updateData(response.body().getResults());
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<MovieResponse> call, Throwable t) { }
+                });
+    }
+
     private void setupRecyclerView(RecyclerView rv) {
         rv.setLayoutManager(new LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false));
     }
@@ -77,6 +147,7 @@ public class HomeFragment extends Fragment {
     private void loadAllData() {
         loadPopular();
         loadRecommended();
+        loadGenreRows();
     }
 
     // Banner + hàng "Phổ biến" đều lấy từ /movie/popular
