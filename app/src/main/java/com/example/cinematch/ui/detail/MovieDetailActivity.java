@@ -1,15 +1,15 @@
 package com.example.cinematch.ui.detail;
 
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
-import android.webkit.WebSettings;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.RatingBar;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.webkit.WebView;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -50,12 +50,12 @@ public class MovieDetailActivity extends AppCompatActivity {
 
     private ImageView imgBackdrop;
     private TextView tvTitle, tvMeta, tvOverview;
-    private Button btnWatchlist, btnSubmitReview, btnSaveRating;
-    private WebView webViewTrailer;
+    private Button btnWatchlist, btnSubmitReview, btnSaveRating, btnTrailer;
     private RecyclerView rvCast, rvReviews, rvSimilar;
     private com.example.cinematch.adapters.MovieAdapter similarAdapter;
     private EditText edtReviewContent;
     private RatingBar ratingBar;
+    private String trailerYoutubeKey; // null nếu chưa tìm được trailer nào
 
     private CastAdapter castAdapter;
     private ReviewAdapter reviewAdapter;
@@ -97,6 +97,7 @@ public class MovieDetailActivity extends AppCompatActivity {
         btnWatchlist.setOnClickListener(v -> toggleWatchlist());
         btnSubmitReview.setOnClickListener(v -> submitReview());
         btnSaveRating.setOnClickListener(v -> saveRating());
+        btnTrailer.setOnClickListener(v -> openTrailerOnYoutube());
     }
 
     private void bindViews() {
@@ -105,7 +106,7 @@ public class MovieDetailActivity extends AppCompatActivity {
         tvMeta = findViewById(R.id.tvMeta);
         tvOverview = findViewById(R.id.tvOverview);
         btnWatchlist = findViewById(R.id.btnWatchlist);
-        webViewTrailer = findViewById(R.id.webViewTrailer);
+        btnTrailer = findViewById(R.id.btnTrailer);
         rvCast = findViewById(R.id.rvCast);
         rvSimilar = findViewById(R.id.rvSimilar);
         rvReviews = findViewById(R.id.rvReviews);
@@ -113,20 +114,6 @@ public class MovieDetailActivity extends AppCompatActivity {
         btnSubmitReview = findViewById(R.id.btnSubmitReview);
         btnSaveRating = findViewById(R.id.btnSaveRating);
         ratingBar = findViewById(R.id.ratingBar);
-
-        WebSettings settings = webViewTrailer.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true); // YouTube iframe API cần DOM storage để chạy JS nội bộ
-        settings.setMediaPlaybackRequiresUserGesture(false); // cho phép tự phát khi nhấn play trong iframe
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
-
-        // Nếu không set WebViewClient, mọi link (kể cả nút "Watch on YouTube" khi lỗi) sẽ
-        // bị đẩy ra ngoài trình duyệt/app YouTube thay vì xử lý trong WebView -> đây là lý do
-        // trước đây luôn bị "chuyển hướng sang YouTube". Giữ điều hướng trong WebView.
-        webViewTrailer.setWebViewClient(new android.webkit.WebViewClient());
-        // WebChromeClient cần thiết để iframe YouTube hỗ trợ toàn màn hình / phát video đúng cách
-        webViewTrailer.setWebChromeClient(new android.webkit.WebChromeClient());
     }
 
     private void setupRecyclerViews() {
@@ -203,9 +190,11 @@ public class MovieDetailActivity extends AppCompatActivity {
                 });
     }
 
-    // Lấy key trailer từ TMDB /videos, nhúng bằng WebView -> KHÔNG dùng YouTube Data API.
+    // Lấy key trailer từ TMDB /videos. Thay vì nhúng WebView (hay lỗi 135/152 do YouTube chặn
+    // phát trong WebView thiếu Play Services đầy đủ), chỉ hiện 1 nút "TRAILER" -> bấm vào mở
+    // thẳng app YouTube/trình duyệt để phát, giống cách Letterboxd làm.
     // Nhiều phim không có bản trailer tiếng Việt trên TMDB nên thử vi-VN trước,
-    // nếu rỗng thì fallback sang en-US để không bị trống trắng như trước.
+    // nếu rỗng thì fallback sang en-US.
     private void loadVideos() {
         fetchVideos(Constants.TMDB_LANGUAGE, true);
     }
@@ -220,12 +209,12 @@ public class MovieDetailActivity extends AppCompatActivity {
 
                         Video chosen = pickBestTrailer(results);
                         if (chosen != null) {
-                            webViewTrailer.setVisibility(android.view.View.VISIBLE);
-                            loadTrailerHtml(chosen.getKey());
+                            trailerYoutubeKey = chosen.getKey();
+                            btnTrailer.setVisibility(android.view.View.VISIBLE);
                         } else if (allowFallback) {
                             fetchVideos("en-US", false); // thử lại bằng tiếng Anh
                         } else {
-                            webViewTrailer.setVisibility(android.view.View.GONE); // không có trailer nào cả
+                            btnTrailer.setVisibility(android.view.View.GONE); // không có trailer nào cả
                         }
                     }
 
@@ -234,25 +223,18 @@ public class MovieDetailActivity extends AppCompatActivity {
                         if (allowFallback) {
                             fetchVideos("en-US", false);
                         } else {
-                            webViewTrailer.setVisibility(android.view.View.GONE);
+                            btnTrailer.setVisibility(android.view.View.GONE);
                         }
                     }
                 });
     }
 
-    // Load trực tiếp URL embed hay bị lỗi 135 (referrer/X-Frame-Options bị chặn khi WebView
-    // không có "trang chủ" hợp lệ). Bọc trong 1 trang HTML tối giản rồi nạp bằng
-    // loadDataWithBaseURL với base URL là youtube.com giúp video phát được ổn định trong app,
-    // không còn phải mở sang ứng dụng/trình duyệt YouTube ngoài.
-    private void loadTrailerHtml(String youtubeKey) {
-        String html = "<html><body style='margin:0;padding:0;background:#000;'>"
-                + "<iframe width='100%' height='100%' "
-                + "src='https://www.youtube.com/embed/" + youtubeKey
-                + "?playsinline=1&rel=0&modestbranding=1' "
-                + "frameborder='0' allow='autoplay; encrypted-media' allowfullscreen></iframe>"
-                + "</body></html>";
-        webViewTrailer.loadDataWithBaseURL(
-                "https://www.youtube.com", html, "text/html", "utf-8", null);
+    // Mở app YouTube nếu có cài, không thì tự fallback sang trình duyệt (hành vi mặc định của Intent)
+    private void openTrailerOnYoutube() {
+        if (trailerYoutubeKey == null) return;
+        Intent intent = new Intent(Intent.ACTION_VIEW,
+                Uri.parse("https://www.youtube.com/watch?v=" + trailerYoutubeKey));
+        startActivity(intent);
     }
 
     // Ưu tiên Trailer chính thức, không có thì lấy Teaser, cuối cùng lấy video YouTube bất kỳ

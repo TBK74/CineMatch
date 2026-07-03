@@ -53,12 +53,17 @@
                 android:backgroundTint="@color/cinematch_accent"
                 android:text="@string/add_to_watchlist" />
 
-            <!-- Trailer nhúng qua WebView, dùng key lấy từ TMDB /videos endpoint -->
-            <WebView
-                android:id="@+id/webViewTrailer"
-                android:layout_width="match_parent"
-                android:layout_height="200dp"
-                android:layout_marginTop="16dp" />
+            <!-- Nút mở trailer trên YouTube trực tiếp, thay cho WebView nhúng (hay lỗi 152/135
+                 do YouTube chặn phát trong WebView không có Play Services đầy đủ) -->
+            <Button
+                android:id="@+id/btnTrailer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="▶  TRAILER"
+                android:textColor="@color/white"
+                android:backgroundTint="@color/cinematch_surface"
+                android:visibility="gone" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -101,14 +106,21 @@
                 android:textColor="@color/white"
                 android:textSize="14sp" />
 
+            <!-- QUAN TRỌNG: KHÔNG dùng style="?android:attr/ratingBarStyleSmall" - đó là style
+                 CHỈ ĐỂ HIỂN THỊ (indicator), người dùng không chạm chọn sao được. Dùng style
+                 mặc định (isIndicator=false) để bấm được, chỉ scale nhỏ lại bằng scaleX/Y cho gọn. -->
             <RatingBar
                 android:id="@+id/ratingBar"
-                style="?android:attr/ratingBarStyleSmall"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
+                android:layout_marginStart="-8dp"
+                android:isIndicator="false"
                 android:numStars="5"
-                android:stepSize="0.5" />
+                android:stepSize="0.5"
+                android:scaleX="0.8"
+                android:scaleY="0.8"
+                android:transformPivotX="0dp" />
 
             <Button
                 android:id="@+id/btnSaveRating"
