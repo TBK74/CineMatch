@@ -33,6 +33,10 @@ public class FirestoreManager {
     public interface BooleanCallback {
         void onResult(boolean result);
     }
+    public interface RatingCallback {
+        void onSuccess(Rating rating); // trả về null nếu chưa từng rate
+        void onError(String message);
+    }
 
     private final FirebaseFirestore db;
 
@@ -43,6 +47,15 @@ public class FirestoreManager {
     // ================= USERS =================
 
     public void createUserDocument(User user, SimpleCallback callback) {
+        db.collection(Constants.COLLECTION_USERS).document(user.getUid())
+                .set(user)
+                .addOnSuccessListener(unused -> callback.onSuccess())
+                .addOnFailureListener(e -> callback.onError(e.getMessage()));
+    }
+
+    // Cập nhật hồ sơ (tên, giới tính, tuổi, sđt, avatar) từ màn EditProfileActivity.
+    // Dùng .set() ghi đè toàn bộ document vì luôn truyền vào 1 User đã có đủ field cũ + mới.
+    public void updateUserProfile(User user, SimpleCallback callback) {
         db.collection(Constants.COLLECTION_USERS).document(user.getUid())
                 .set(user)
                 .addOnSuccessListener(unused -> callback.onSuccess())
@@ -84,6 +97,16 @@ public class FirestoreManager {
                         ratings.add(doc.toObject(Rating.class));
                     }
                     callback.onSuccess(ratings);
+                })
+                .addOnFailureListener(e -> callback.onError(e.getMessage()));
+    }
+
+    // Lấy rating hiện có của user cho 1 phim cụ thể -> để pre-fill RatingBar khi mở lại Movie Detail
+    public void getRating(String userId, int movieId, RatingCallback callback) {
+        String docId = userId + "_" + movieId;
+        db.collection(Constants.COLLECTION_RATINGS).document(docId).get()
+                .addOnSuccessListener(doc -> {
+                    callback.onSuccess(doc.exists() ? doc.toObject(Rating.class) : null);
                 })
                 .addOnFailureListener(e -> callback.onError(e.getMessage()));
     }

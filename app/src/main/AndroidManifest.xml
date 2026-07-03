@@ -28,6 +28,7 @@
 
         <!-- Explicit intent từ MovieAdapter/WatchlistAdapter -> nhận EXTRA_MOVIE_ID -->
         <activity android:name=".ui.detail.MovieDetailActivity" android:exported="false" />
+        <activity android:name=".ui.profile.EditProfileActivity" android:exported="false" />
 
         <!-- Chỉ mở khi role = moderator, kiểm tra ở MainActivity trước khi startActivity -->
         <activity android:name=".ui.moderator.ModeratorDashboardActivity" android:exported="false" />

@@ -110,6 +110,14 @@
                 android:numStars="5"
                 android:stepSize="0.5" />
 
+            <Button
+                android:id="@+id/btnSaveRating"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/cinematch_accent"
+                android:text="Lưu đánh giá" />
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
